@@ -105,11 +105,30 @@ public class Exercise9Test extends ClassicOnlineStore {
          * "1-3" will be "111"
          * "7,1-3,5" will be "1110101"
          */
-        Collector<String, ?, String> toBitString = null;
+        Supplier<Map<Integer, String>> supplier = HashMap<Integer, String>::new;
+        BiConsumer<Map<Integer, String>, String> accumulator =
+                (map, s) -> {
+                    if (s.contains("-")) {
+                        String[] values = s.split("-");
+                        for (int i = Integer.parseInt(values[0]); i <= Integer.parseInt(values[1]); i++) {
+                            map.put(i, "1");
+                        }
+                    } else {
+                        map.put(Integer.parseInt(s), "1");
+                    }
+                };
+        Function<Map<Integer, String>, String> finisher = m -> {
+            int max = m.keySet().stream().max(Comparator.naturalOrder()).orElse(0);
+            StringBuilder sb = new StringBuilder(max);
+            for (int i = 1 ; i <= max ; i++) {
+                sb.append(m.getOrDefault(i,"0"));
+            }
+            return sb.toString();
+        };
+        Collector<String, Map<Integer, String>, String> toBitString =
+                new CollectorImpl<>(supplier, accumulator, null, finisher, Collections.emptySet());
 
         String bitString = Arrays.stream(bitList.split(",")).collect(toBitString);
-        assertThat(bitString, is("01011000101001111000011100000000100001110111010101")
-
-        );
+        assertThat(bitString, is("01011000101001111000011100000000100001110111010101"));
     }
 }
