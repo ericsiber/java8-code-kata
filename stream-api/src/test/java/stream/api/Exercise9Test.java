@@ -3,16 +3,12 @@ package stream.api;
 import common.test.tool.annotation.Necessity;
 import common.test.tool.dataset.ClassicOnlineStore;
 import common.test.tool.entity.Customer;
+import common.test.tool.entity.Item;
 import common.test.tool.util.CollectorImpl;
 
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
@@ -34,13 +30,12 @@ public class Exercise9Test extends ClassicOnlineStore {
          * Implement a {@link Collector} which can create a String with comma separated names shown in the assertion.
          * The collector will be used by serial stream.
          */
-        Supplier<Object> supplier = null;
-        BiConsumer<Object, String> accumulator = null;
-        BinaryOperator<Object> combiner = null;
-        Function<Object, String> finisher = null;
+        Supplier<StringBuilder> supplier = StringBuilder::new;
+        BiConsumer<StringBuilder, String> accumulator = (sb, s) -> sb.append(s).append(",");
+        Function<StringBuilder, String> finisher = s -> s.substring(0, s.length()-1);
 
-        Collector<String, ?, String> toCsv =
-            new CollectorImpl<>(supplier, accumulator, combiner, finisher, Collections.emptySet());
+        Collector<String, StringBuilder, String> toCsv =
+            new CollectorImpl<>(supplier, accumulator, null, finisher, Collections.emptySet());
         String nameAsCsv = customerList.stream().map(Customer::getName).collect(toCsv);
         assertThat(nameAsCsv, is("Joe,Steven,Patrick,Diana,Chris,Kathy,Alice,Andrew,Martin,Amy"));
     }
@@ -55,16 +50,38 @@ public class Exercise9Test extends ClassicOnlineStore {
          * values as {@link Set} of customers who are wanting to buy that item.
          * The collector will be used by parallel stream.
          */
-        Supplier<Object> supplier = null;
-        BiConsumer<Object, Customer> accumulator = null;
-        BinaryOperator<Object> combiner = null;
-        Function<Object, Map<String, Set<String>>> finisher = null;
+        Supplier<Map<String, Set<String>>> supplier = HashMap<String, Set<String>>::new;
+        BiConsumer<Map<String, Set<String>>, Customer> accumulator =
+                (map, customer) ->
+                        customer.getWantToBuy().stream().forEach(
+                                item ->
+                                    {
+                                        Set<String> values = map.getOrDefault(item.getName(), new HashSet<>());
+                                        values.add(customer.getName());
+                                        map.putIfAbsent(item.getName(), values);
+                                    }
+                        );
+        BinaryOperator<Map<String, Set<String>>> combiner = (m1, m2) -> {
+            m1.forEach(
+                    (s, set) ->
+                        m2.merge(s, set,
+                                        (s1, s2) -> {
+                                                        s1.addAll(s2);
+                                                        return s1;
+                                                    }
+                        )
+            );
+            return m2;
+        };
+        Function<Map<String, Set<String>>, Map<String, Set<String>>> finisher = m -> m;
 
-        Collector<Customer, ?, Map<String, Set<String>>> toItemAsKey =
+        Collector<Customer, Map<String, Set<String>>, Map<String, Set<String>>> toItemAsKey =
             new CollectorImpl<>(supplier, accumulator, combiner, finisher, EnumSet.of(
                 Collector.Characteristics.CONCURRENT,
                 Collector.Characteristics.IDENTITY_FINISH));
-        Map<String, Set<String>> itemMap = customerList.stream().parallel().collect(toItemAsKey);
+        Map<String, Set<String>> itemMap = customerList.stream()
+                .parallel()
+                .collect(toItemAsKey);
         assertThat(itemMap.get("plane"), containsInAnyOrder("Chris"));
         assertThat(itemMap.get("onion"), containsInAnyOrder("Patrick", "Amy"));
         assertThat(itemMap.get("ice cream"), containsInAnyOrder("Patrick", "Steven"));
